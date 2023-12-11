@@ -1,25 +1,12 @@
-CC=gcc
-CFLAGS=-I.
-
-# Path to the source files
-SRC_DIR=src/
-
-# Source files
-SRC=$(wildcard $(SRC_DIR)/*.c)
-
-# Object files
-OBJ=$(SRC:.c=.o)
-
-# Executable
-TARGET=download
-
-all: $(TARGET)
-
-$(TARGET): $(OBJ)
-	$(CC) -o $@ $^ $(CFLAGS)
-
-%.o: %.c
-	$(CC) -c -o $@ $< $(CFLAGS)
-
+CC = gcc
+CFLAGS = -Wall -g
+SRC = src/
+INCLUDE = include/
+BIN = bin/
+.PHONY: run
+run: $(BIN)/download
+$(BIN)/download: $(SRC)/clientTCP.c $(SRC)/getip.c
+	$(CC) $(CFLAGS) -o $@ $^
+.PHONY: clean
 clean:
-	rm -f $(OBJ) $(TARGET)
+	rm -rf $(BIN)/download
