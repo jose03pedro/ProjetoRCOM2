@@ -6,6 +6,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-void createSocket(char *serverAddress, int serverPort);
+int createSocket(char *serverAddress, int serverPort);
 
 #endif  // CLIENTTCP_H
