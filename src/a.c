@@ -43,7 +43,7 @@ int main(int argc, char *argv[]) {
     }
 
     socketB = createSocket(ip, port);
-    if (requestResource(socketA, url_args.fileName) != 150) {
+    if (requestResource(socketA, url_args.path) != 150) {
         printf("Error requesting resource\n");
         exit(-1);
     }
@@ -52,7 +52,7 @@ int main(int argc, char *argv[]) {
         printf("Error getting resource\n");
         exit(-1);
     }
-
+    printf("Resource downloaded\n");
     if (closeConnection(socketA, socketB) != 0) {
         printf("Error closing connection\n");
         exit(-1);
@@ -89,14 +89,15 @@ int url_parse(char *url, urlArgs *url_parse) {
         strcpy(url_parse->host, middle);
     }
 
-    char *file_name = strrchr(final, '/');
-    if (file_name == NULL) {
-        strcpy(url_parse->fileName, final);
-        strcpy(url_parse->path, "/");
-    } else {
-        strcpy(url_parse->fileName, file_name + 1);
-        strcpy(url_parse->path, final);
+    char *fileName = final, *p;
+    for (p = final; *p; p++) {
+        if (*p == '/' || *p == '\\' || *p == ':') {
+            fileName = p + 1;
+        }
     }
+
+    strcpy(url_parse->fileName, fileName);
+    strcpy(url_parse->path, final);
 
     if (!strcmp(url_parse->host, "") || !strcmp(url_parse->path, "")) {
         printf("Invalid URL\n");
@@ -112,6 +113,9 @@ int url_parse(char *url, urlArgs *url_parse) {
 
     strcpy(url_parse->host_name, h->h_name);
     strcpy(url_parse->ip, inet_ntoa(*((struct in_addr *)h->h_addr)));
+
+    printf("Host name  : %s\n", h->h_name);
+    printf("IP Address : %s\n", inet_ntoa(*((struct in_addr *)h->h_addr)));
 
     return 0;
 }
@@ -233,17 +237,20 @@ int getResource(int socketA, int socketB, const char *filename) {
     }
 
     char buffer[1024];
-    int bytes;
+    ssize_t bytes;
     printf("Starting to download the file with name %s\n", filename);
-    while ((bytes = read(socketB, buffer, sizeof(buffer)))) {
-        if (bytes < 0) {
-            printf("Error reading from data socket\n");
-            return -1;
-        }
-        if ((bytes = fwrite(buffer, bytes, 1, fd)) < 0) {
+    while ((bytes = read(socketB, buffer, sizeof(buffer) - 1)) >
+           0) {                // ensure buffer is not overflowed
+        buffer[bytes] = '\0';  // null terminate the buffer
+        if (fwrite(buffer, 1, bytes, fd) != bytes) {
             printf("Error writing data to file\n");
             return -1;
         }
+    }
+
+    if (bytes < 0) {
+        printf("Error reading from data socket\n");
+        return -1;
     }
 
     printf("Finished downloading the file\n");
@@ -252,12 +259,12 @@ int getResource(int socketA, int socketB, const char *filename) {
         printf("Error closing file\n");
         return -1;
     }
-    printf("File closed\n");
-    return read_answer(socketA, buffer);
+    char answer[500];
+    return read_answer(socketA, answer);
 }
-
 int closeConnection(const int socketA, const int socketB) {
     char answer[500];
+    printf("Closing connection\n");
     write_to_server(socketA, "quit\n");
     if (read_answer(socketA, answer) != 221) return -1;
     return close(socketA) || close(socketB);
