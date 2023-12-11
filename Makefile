@@ -5,7 +5,7 @@ INCLUDE = include/
 BIN = bin/
 .PHONY: run
 run: $(BIN)/download
-$(BIN)/download: $(SRC)/a.c
+$(BIN)/download: $(SRC)/main.c
 	$(CC) $(CFLAGS) -o $@ $^
 .PHONY: clean
 clean:
