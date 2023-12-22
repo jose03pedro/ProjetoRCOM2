@@ -1,7 +1,3 @@
-/**
- * Example code for getting the IP address from hostname.
- * tidy up includes
- */
 #include "../include/main.h"
 
 #include <arpa/inet.h>
@@ -12,56 +8,60 @@
 #include <string.h>
 
 int main(int argc, char *argv[]) {
-    struct hostent *h;
-    int socketA, socketB, port;
-    char ip[20];
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <address to get IP address>\n", argv[0]);
-        exit(-1);
+        return -1;
     }
+
+    char ip[20], answer[500];
+    int port, control_socket, dataSocket;
 
     urlArgs url_args;
     if (url_parse(argv[1], &url_args) != 0) {
-        perror("url_parse()");
-        exit(-1);
-    }
-    char answer[500];
-    socketA = createSocket(url_args.ip, 21);
-    if (socketA < 0 || read_answer(socketA, answer) != 220) {
-        printf("Socket to '%s' and port %d failed\n", url_args.ip, 21);
-        exit(-1);
+        fprintf(stderr, "Error parsing URL\n");
+        return -1;
     }
 
-    if (connection_server(socketA, url_args.user, url_args.password) < 0) {
-        printf("Error connecting to server\n");
-        exit(-1);
-    }
-    printf("Connected to server\n");
-    if (passive_mode(socketA, ip, &port) != 0) {
-        printf("Error entering passive mode\n");
-        exit(-1);
+    control_socket = create_socket(url_args.ip, 21);
+    if (control_socket < 0 || read_answer(control_socket, answer) != 220) {
+        fprintf(stderr, "Failed to create socket to '%s' on port %d\n",
+                url_args.ip, 21);
+        return -1;
     }
 
-    socketB = createSocket(ip, port);
-    if (requestResource(socketA, url_args.path) != 150) {
-        printf("Error requesting resource\n");
-        exit(-1);
+    if (connection_server(control_socket, url_args.user, url_args.password) <
+        0) {
+        fprintf(stderr, "Error connecting to server\n");
+        return -1;
     }
 
-    if (getResource(socketA, socketB, url_args.fileName) != 226) {
-        printf("Error getting resource\n");
-        exit(-1);
-    }
-    printf("Resource downloaded\n");
-    if (closeConnection(socketA, socketB) != 0) {
-        printf("Error closing connection\n");
-        exit(-1);
+    if (passive_mode(control_socket, ip, &port) != 0) {
+        fprintf(stderr, "Error entering passive mode\n");
+        return -1;
     }
 
+    dataSocket = create_socket(ip, port);
+    if (request_file(control_socket, url_args.path) != 150) {
+        fprintf(stderr, "Error requesting file\n");
+        return -1;
+    }
+
+    if (download_file(control_socket, dataSocket, url_args.filename) != 226) {
+        fprintf(stderr, "Error downloading file\n");
+        return -1;
+    }
+
+    if (terminate_connection(control_socket, dataSocket) != 0) {
+        fprintf(stderr, "Error closing connection\n");
+        return -1;
+    }
+
+    printf("File downloaded successfully\n");
     return 0;
 }
 
 int url_parse(char *url, urlArgs *url_parse) {
+    struct hostent *h;
     char *start = strtok(url, "/");
     char *middle = strtok(NULL, "/");
     char *final = strtok(NULL, "");
@@ -89,14 +89,14 @@ int url_parse(char *url, urlArgs *url_parse) {
         strcpy(url_parse->host, middle);
     }
 
-    char *fileName = final, *p;
+    char *filename = final, *p;
     for (p = final; *p; p++) {
         if (*p == '/' || *p == '\\' || *p == ':') {
-            fileName = p + 1;
+            filename = p + 1;
         }
     }
 
-    strcpy(url_parse->fileName, fileName);
+    strcpy(url_parse->filename, filename);
     strcpy(url_parse->path, final);
 
     if (!strcmp(url_parse->host, "") || !strcmp(url_parse->path, "")) {
@@ -104,11 +104,9 @@ int url_parse(char *url, urlArgs *url_parse) {
         return -1;
     }
 
-    struct hostent *h;
-
     if ((h = gethostbyname(url_parse->host)) == NULL) {
         herror("gethostbyname()");
-        exit(-1);
+        return -1;
     }
 
     strcpy(url_parse->host_name, h->h_name);
@@ -120,39 +118,60 @@ int url_parse(char *url, urlArgs *url_parse) {
     return 0;
 }
 
+int create_socket(char *serverAddress, int serverPort) {
+    int sockfd;
+    struct sockaddr_in server_addr;
+    // char buf[] = "Mensagem de teste na travessia da pilha TCP/IP\n";
+
+    /*server address handling*/
+    bzero((char *)&server_addr, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = inet_addr(serverAddress);
+    server_addr.sin_port = htons(serverPort);
+
+    /*open a TCP socket*/
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        fprintf(stderr, "socket()");
+        return -1;
+    }
+    /*connect to the server*/
+    if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
+        0) {
+        fprintf(stderr, "connect()");
+        return -1;
+    }
+    printf("Connected to %s:%d\n", serverAddress, serverPort);
+    return sockfd;
+}
+
+int terminate_connection(const int control_socket, const int dataSocket) {
+    printf("Closing connection\n");
+    if (write_to_server(control_socket, "quit\n") < 0) {
+        return -1;
+    }
+    // char answer[500];
+    // if (read_answer(socketA, answer) != 221) return -1;
+    return close(control_socket) || close(dataSocket);
+}
+
 int write_to_server(int socket, char *message) {
     size_t bytes;
     bytes = write(socket, message, strlen(message));
     if (bytes > 0)
-        printf("Bytes escritos %ld\n", bytes);
+        printf("Bytes written: %ld\n", bytes);
     else {
-        perror("write()");
-        exit(-1);
+        fprintf(stderr, "write()");
+        return -1;
     }
     printf("> %s", message);
-    return 0;
-}
-
-int connection_server(int socket, char *user, char *password) {
-    char response[500];
-    char user_message[5 + strlen(user) + 1];
-    sprintf(user_message, "user %s\n", user);
-    write_to_server(socket, user_message);
-    if (read_answer(socket, response) != 331) return -1;
-    char pass_message[5 + strlen(password) + 1];
-    sprintf(pass_message, "pass %s\n", password);
-    write_to_server(socket, pass_message);
-
-    if (read_answer(socket, response) != 230) return -1;
-    printf("Logged in\n");
     return 0;
 }
 
 int read_answer(int socket, char *response) {
     FILE *fp = fdopen(socket, "r");
     if (fp == NULL) {
-        perror("fdopen()");
-        exit(-1);
+        fprintf(stderr, "fdopen()");
+        return -1;
     }
     char *line;
     size_t len = 0;
@@ -170,11 +189,33 @@ int read_answer(int socket, char *response) {
     return code;
 }
 
+int connection_server(int socket, char *user, char *password) {
+    char response[500];
+    char user_message[5 + strlen(user) + 1];  //  'user '= 5; + string pass + \0
+    sprintf(user_message, "user %s\n", user);
+    if (write_to_server(socket, user_message) < 0) {
+        return -1;
+    }
+    if (read_answer(socket, response) != 331) return -1;
+    char pass_message[5 + strlen(password) +
+                      1];  // 'pass '= 5; + string pass + \0
+    sprintf(pass_message, "pass %s\n", password);
+    if (write_to_server(socket, pass_message) < 0) {
+        return -1;
+    }
+
+    if (read_answer(socket, response) != 230) return -1;
+    printf("Logged in\n");
+    return 0;
+}
+
 int passive_mode(int socket, char *ip, int *port) {
     char *message = "pasv\n";
     char response[500];
     int ip1, ip2, ip3, ip4, port1, port2;
-    write_to_server(socket, message);
+    if (write_to_server(socket, message) < 0) {
+        return -1;
+    }
 
     if (read_answer(socket, response) != 227) {
         printf("Error entering passive mode\n");
@@ -193,78 +234,48 @@ int passive_mode(int socket, char *ip, int *port) {
     return 0;
 }
 
-int createSocket(char *serverAddress, int serverPort) {
-    int sockfd;
-    struct sockaddr_in server_addr;
-    char buf[] = "Mensagem de teste na travessia da pilha TCP/IP\n";
-    size_t bytes;
-
-    /*server address handling*/
-    bzero((char *)&server_addr, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr(serverAddress);
-    server_addr.sin_port = htons(serverPort);
-
-    /*open a TCP socket*/
-    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("socket()");
-        exit(-1);
+int request_file(int connectionSocket, char *filename) {
+    char fileCommand[5 + strlen(filename) + 1], answer[500];
+    sprintf(fileCommand, "retr %s\n", filename);
+    if (write_to_server(connectionSocket, fileCommand) < 0) {
+        return -1;
     }
-    /*connect to the server*/
-    if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
-        0) {
-        perror("connect()");
-        exit(-1);
-    }
-    printf("Connected to %s:%d\n", serverAddress, serverPort);
-    printf("Socket fd: %d\n", sockfd);
-    return sockfd;
+    return read_answer(connectionSocket, answer);
 }
 
-int requestResource(int socket, char *resource) {
-    char fileCommand[5 + strlen(resource) + 1], answer[500];
-    sprintf(fileCommand, "retr %s\n", resource);
-    write_to_server(socket, fileCommand);
-    return read_answer(socket, answer);
-}
-
-int getResource(int socketA, int socketB, const char *filename) {
-    FILE *fd = fopen(filename, "wb");
-    if (fd == NULL) {
-        printf("Error opening or creating file '%s'\n", filename);
-        exit(-1);
+int download_file(int control_socket, int dataSocket,
+                  const char *targetfilename) {
+    FILE *fileDescriptor = fopen(targetfilename, "wb");
+    if (fileDescriptor == NULL) {
+        fprintf(stderr, "Error opening or creating file '%s'\n",
+                targetfilename);
+        return -1;
     }
 
     char buffer[1024];
-    ssize_t bytes;
-    printf("Starting to download the file with name %s\n", filename);
-    while ((bytes = read(socketB, buffer, sizeof(buffer) - 1)) >
-           0) {                // ensure buffer is not overflowed
-        buffer[bytes] = '\0';  // null terminate the buffer
-        if (fwrite(buffer, 1, bytes, fd) != bytes) {
-            printf("Error writing data to file\n");
+    ssize_t bytesRead;
+    printf("Downloading the file called %s\n", targetfilename);
+    while ((bytesRead = read(dataSocket, buffer, sizeof(buffer) - 1)) > 0) {
+        buffer[bytesRead] = '\0';
+        if (fwrite(buffer, 1, bytesRead, fileDescriptor) != bytesRead) {
+            fprintf(stderr, "Error writing data to file\n");
+            fclose(fileDescriptor);
             return -1;
         }
     }
 
-    if (bytes < 0) {
-        printf("Error reading from data socket\n");
+    if (bytesRead < 0) {
+        fprintf(stderr, "Error reading from data socket\n");
+        fclose(fileDescriptor);
         return -1;
     }
 
-    printf("Finished downloading the file\n");
+    printf("The file has successfully downloaded\n");
 
-    if (fclose(fd) < 0) {
-        printf("Error closing file\n");
+    if (fclose(fileDescriptor) < 0) {
+        fprintf(stderr, "Error closing file\n");
         return -1;
     }
     char answer[500];
-    return read_answer(socketA, answer);
-}
-int closeConnection(const int socketA, const int socketB) {
-    // char answer[500];
-    printf("Closing connection\n");
-    write_to_server(socketA, "quit\n");
-    // if (read_answer(socketA, answer) != 221) return -1;
-    return close(socketA) || close(socketB);
+    return read_answer(control_socket, answer);
 }

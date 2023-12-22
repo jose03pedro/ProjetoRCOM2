@@ -20,24 +20,29 @@ typedef struct {
 } hostent;
 
 typedef struct {
-    char host[512];
-    char user[256];
-    char password[256];
-    char path[512];
-    char fileName[512];
-    char host_name[512];
-    char ip[20];
+    char host[256];
+    char user[64];
+    char password[64];
+    char path[256];
+    char filename[128];
+    char host_name[256];
+    char ip[16];
 } urlArgs;
 
-void MAIN(char *hostName);
+// URL parsing
 int url_parse(char *url, urlArgs *parsedUrl);
-int write_to_server(int socket, char *message);
-int closeConnection(int socketA, int socketB);
-int passive_mode(int socket, char *ip, int *port);
-int getResource(int socketA, int socketB, const char *fileName);
 
-int createSocket(char *ip, int port);
-int requestResource(int socket, char *resource);
-int connection_server(int socket, char *user, char *password);
+// Socket creation and termination
+int create_socket(char *ip, int port);
+int terminate_connection(const int controlSocket, const int dataSocket);
+
+// FTP commands
+int write_to_server(int socket, char *message);
 int read_answer(int socket, char *response);
+int connection_server(int socket, char *user, char *password);
+int passive_mode(int socket, char *ip, int *port);
+int request_file(int connectionSocket, char *fileName);
+int download_file(int controlSocket, int dataSocket,
+                  const char *targetFileName);
+
 #endif  // MAIN_H
