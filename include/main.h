@@ -30,19 +30,19 @@ typedef struct {
 } urlArgs;
 
 // URL parsing
-int url_parse(char *url, urlArgs *parsedUrl);
+int url_parse(char *url, urlArgs *parsed_url);
 
 // Socket creation and termination
 int create_socket(char *ip, int port);
-int terminate_connection(const int controlSocket, const int dataSocket);
+int terminate_connection(const int control_socket, const int data_socket);
 
 // FTP commands
 int write_to_server(int socket, char *message);
 int read_answer(int socket, char *response);
 int connection_server(int socket, char *user, char *password);
 int passive_mode(int socket, char *ip, int *port);
-int request_file(int connectionSocket, char *fileName);
-int download_file(int controlSocket, int dataSocket,
-                  const char *targetFileName);
+int request_file(int connection_socket, char *filename);
+int download_file(int control_socket, int data_socket,
+                  const char *target_filename);
 
 #endif  // MAIN_H

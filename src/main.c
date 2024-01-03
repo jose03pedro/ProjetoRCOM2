@@ -234,45 +234,45 @@ int passive_mode(int socket, char *ip, int *port) {
     return 0;
 }
 
-int request_file(int connectionSocket, char *filename) {
+int request_file(int connection_socket, char *filename) {
     char fileCommand[5 + strlen(filename) + 1], answer[500];
     sprintf(fileCommand, "retr %s\n", filename);
-    if (write_to_server(connectionSocket, fileCommand) < 0) {
+    if (write_to_server(connection_socket, fileCommand) < 0) {
         return -1;
     }
-    return read_answer(connectionSocket, answer);
+    return read_answer(connection_socket, answer);
 }
 
 int download_file(int control_socket, int dataSocket,
-                  const char *targetfilename) {
-    FILE *fileDescriptor = fopen(targetfilename, "wb");
-    if (fileDescriptor == NULL) {
+                  const char *target_filename) {
+    FILE *file_descriptor = fopen(target_filename, "wb");
+    if (file_descriptor == NULL) {
         fprintf(stderr, "Error opening or creating file '%s'\n",
-                targetfilename);
+                target_filename);
         return -1;
     }
 
     char buffer[1024];
     ssize_t bytesRead;
-    printf("Downloading the file called %s\n", targetfilename);
+    printf("Downloading the file called %s\n", target_filename);
     while ((bytesRead = read(dataSocket, buffer, sizeof(buffer) - 1)) > 0) {
         buffer[bytesRead] = '\0';
-        if (fwrite(buffer, 1, bytesRead, fileDescriptor) != bytesRead) {
+        if (fwrite(buffer, 1, bytesRead, file_descriptor) != bytesRead) {
             fprintf(stderr, "Error writing data to file\n");
-            fclose(fileDescriptor);
+            fclose(file_descriptor);
             return -1;
         }
     }
 
     if (bytesRead < 0) {
         fprintf(stderr, "Error reading from data socket\n");
-        fclose(fileDescriptor);
+        fclose(file_descriptor);
         return -1;
     }
 
     printf("The file has successfully downloaded\n");
 
-    if (fclose(fileDescriptor) < 0) {
+    if (fclose(file_descriptor) < 0) {
         fprintf(stderr, "Error closing file\n");
         return -1;
     }
